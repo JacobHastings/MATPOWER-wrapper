@@ -53,6 +53,10 @@ while time_granted <= Wrapper.duration
             tnext_physics_powerflow = tnext_physics_powerflow + Wrapper.config_data.physics_powerflow.interval;
     end
     
+    if time_granted == Wrapper.duration     %end infinite loop
+        time_granted = Wrapper.duration+1;
+    end
+
 end
 
     
