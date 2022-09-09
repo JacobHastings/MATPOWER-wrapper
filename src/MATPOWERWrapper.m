@@ -144,10 +144,11 @@ classdef MATPOWERWrapper
            %% Placeholder
        end
        
-       function [P_Q, constant_load] = get_bids_from_cosimulation(obj, time, flexibility, price_range)
+       function [P_Q] = get_bids_from_cosimulation(obj, time, flexibility, price_range)
             
             %%   Get Flex and Inflex loads   %%
-            cosim_buses = obj.config_data.cosimulation_bus;  
+            cosim_buses = obj.config_data.cosimulation_bus;
+            P_Q = struct;
             for i = 1:length(cosim_buses)
                 cosim_bus = cosim_buses(i);
                 profile = obj.profiles.('load_profile');
@@ -157,13 +158,15 @@ classdef MATPOWERWrapper
                 flex_load = load_data*(flexibility); 
                 Q_values = [constant_load constant_load+(flex_load*1/3) constant_load+flex_load];
                 P_values = [max(price_range) mean(price_range) min(price_range)];
-                P_Q = polyfit(Q_values,P_values,2);
+                P_Q(cosim_bus).bid = polyfit(Q_values,P_values,2);
+                P_Q(cosim_bus).range = [0,flex_load];
+                P_Q(cosim_bus).constant_load = constant_load;
             end
             
             %%   Plotting PQ Bids   %%
-%             Q = linspace(constant_load, constant_load+flex_load, 10);
-%             P = polyval(P_Q, Q);
-%             plot([0, constant_load, Q],[max(price_range), max(price_range), P]);
+            Q = linspace(constant_load, constant_load+flex_load, 10);
+            P = polyval(P_Q(cosim_bus).bid, Q);
+            plot([0, constant_load, Q],[max(price_range), max(price_range), P]);
             
        end
            
