@@ -158,6 +158,14 @@ classdef MATPOWERWrapper
                 flex_load = load_data*(flexibility); 
                 Q_values = [constant_load constant_load+(flex_load*1/3) constant_load+flex_load];
                 P_values = [max(price_range) mean(price_range) min(price_range)];
+                %Cumulative sum P over Q
+                %Fix P and Q values
+                Q_values = flip((Q_values - Q_values(1)) * (-1));
+                P_values = flip(P_values * (-1));
+                %Standard integration, triangles**********************
+                P_values(1) = (0.5 * (Q_values(2) - Q_values(1)) * (P_values(2) + P_values(1))) + (0.5 * (Q_values(3) - Q_values(2)) * (P_values(2) + P_values(3)));
+                P_values(2) = 0.5 * (Q_values(3) - Q_values(2)) * (P_values(2) + P_values(3));
+                P_values(3) = 0;
                 P_Q(cosim_bus).bid = polyfit(Q_values,P_values,2);
                 P_Q(cosim_bus).range = [0,flex_load];
                 P_Q(cosim_bus).constant_load = constant_load;
