@@ -147,6 +147,7 @@ classdef MATPOWERWrapper
        function [P_Q] = get_bids_from_cosimulation(obj, time, flexibility, price_range)
             
             %%   Get Flex and Inflex loads   %%
+            model = 2; % 1 for piecewise linear, 2 for polynomial
             cosim_buses = obj.config_data.cosimulation_bus;
             P_Q = struct;
             for i = 1:length(cosim_buses)
@@ -159,22 +160,30 @@ classdef MATPOWERWrapper
                 Q_values = [constant_load constant_load+(flex_load*1/3) constant_load+flex_load];
                 P_values = [max(price_range) mean(price_range) min(price_range)];
                 %Cumulative sum P over Q
-                %Fix P and Q values
-                Q_values = flip((Q_values - Q_values(1)) * (-1));
-                P_values = flip(P_values * (-1));
-                %Standard integration, triangles**********************
-                P_values(1) = (0.5 * (Q_values(2) - Q_values(1)) * (P_values(2) + P_values(1))) + (0.5 * (Q_values(3) - Q_values(2)) * (P_values(2) + P_values(3)));
-                P_values(2) = 0.5 * (Q_values(3) - Q_values(2)) * (P_values(2) + P_values(3));
-                P_values(3) = 0;
-                P_Q(cosim_bus).bid = polyfit(Q_values,P_values,2);
-                P_Q(cosim_bus).range = [0,flex_load];
-                P_Q(cosim_bus).constant_load = constant_load;
+                P_Q(cosim_bus).model = model;
+                if model == 2 %polynomial
+                    %Fix P and Q values
+                    Q_values = flip((Q_values - Q_values(1)));
+                    P_values = flip(P_values);
+                    %Standard integration, triangles**********************
+                    P_values(1) = (0.5 * (Q_values(2) - Q_values(1)) * (P_values(2) + P_values(1))) + (0.5 * (Q_values(3) - Q_values(2)) * (P_values(2) + P_values(3)));
+                    P_values(2) = 0.5 * (Q_values(3) - Q_values(2)) * (P_values(2) + P_values(3));
+                    P_values(3) = 0;
+                    P_Q(cosim_bus).bid = polyfit(Q_values,P_values,2);
+                    P_Q(cosim_bus).range = [0,flex_load];
+                    P_Q(cosim_bus).constant_load = constant_load;
+                else % Piecewise linear
+                    P_values = flip(P_values);
+                    P_Q(cosim_bus).bid = [Q_values(1) P_values(1) Q_values(2) P_values(2) Q_values(3) P_values(3)];
+                    P_Q(cosim_bus).range = [0,flex_load];
+                    P_Q(cosim_bus).constant_load = constant_load;
+                end
             end
             
             %%   Plotting PQ Bids   %%
-            Q = linspace(constant_load, constant_load+flex_load, 10);
-            P = polyval(P_Q(cosim_bus).bid, Q);
-            plot([0, constant_load, Q],[max(price_range), max(price_range), P]);
+%             Q = linspace(constant_load, constant_load+flex_load, 10);
+%             P = polyval(P_Q(cosim_bus).bid, Q);
+%             plot([0, constant_load, Q],[max(price_range), max(price_range), P]);
             
        end
            
