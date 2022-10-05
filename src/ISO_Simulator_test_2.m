@@ -2,14 +2,19 @@ clc
 clear all
 clear classes
 
+%%%%%%%%%%%%%%%%%%%%% Display Preferences %%%%%%%%%%%%%%%%%%%%%%%%%%
+warning('off','MATLAB:polyfit:RepeatedPointsOrRescale');
 Dsp_M_Prc = true;
-Dsp_bus = 1;  %choose which bus the marginal prices are displayed from
+Dsp_bus = 2;  %choose which bus the marginal prices are displayed from
 Dsp_MW = true;
-Dsp_pct = true;
-runs = 2; %2 minimum
-
+%%%%%%%%%%%%%%%%%%%%%%% Run Variables %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+runs = 4; %2 minimum
 Price_threshold = 20;
-flexiblity_max = 0.2;
+Price_threshold_commit = 1.1 * Price_threshold;
+flexiblity_max = 0.3;
+flexiblity_increment = 0.05;
+%%%%%%%%%%%%%%%%%%%%%%%%%%% Initializations %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Current_price = 0;
 flexiblity_actual = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Start loop %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -38,7 +43,7 @@ for run = 1:runs
         %% Increasing the branch 
         
     % while time_granted <= Wrapper.config_data.Duration
-    price_range = [10, 30];
+    price_range = [18, 22];
     flexiblity = flexiblity_max * ((run-1)/(runs-1));
 
     %Dispatch_use = zeros((tnext_day_ahead_market/300),1+(runs*size(Wrapper.config_data.cosimulation_bus,1)));
@@ -54,22 +59,29 @@ for run = 1:runs
         
         if time_granted >= tnext_real_time_market  
                 time_granted
+                if Current_price > Price_threshold_commit
+                    flexiblity_actual = flexiblity;
+                elseif Current_price > Price_threshold
+                    flexiblity_actual = flexiblity * ((Current_price - Price_threshold) / (Price_threshold_commit-Price_threshold));
+                elseif Current_price < (2*Price_threshold)-Price_threshold_commit
+                    flexiblity_actual = 0;
+                end
+                Current_price = 10000; %Big value to ensure it runs once
+            while ((Current_price > Price_threshold) && (flexiblity_actual <= flexiblity))
                 Wrapper = Wrapper.update_loads_from_profiles(time_granted, 'load_profile_info', 'load_profile');
                 Wrapper = Wrapper.update_VRE_from_profiles(time_granted, 'wind_profile_info', 'wind_profile');
               %Wrapper = Wrapper.update_dispatchable_loads(bids)*************
               %Uses Wrapper, P_Q
                 if flexiblity ~= 0
-                    [P_Q]  = Wrapper.get_bids_from_cosimulation(time_granted, flexiblity, price_range);
+                    [P_Q]  = Wrapper.get_bids_from_cosimulation(time_granted, flexiblity_actual, price_range);
                     for i = 1 : length(Wrapper.config_data.cosimulation_bus)
                         Bus_number = Wrapper.config_data.cosimulation_bus(i,1);
-                        Wrapper.mpc.bus(Bus_number,3)=P_Q(Bus_number).constant_load;
                         Generator_index = size(Wrapper.mpc.gen,1) + 1;
                         Wrapper.mpc.genfuel(Generator_index,:) = Wrapper.mpc.genfuel(1,:);  %copy random genfuel entry
                         Wrapper.mpc.gen(Generator_index,:) = 0;                             %new entry of 0's
                         Wrapper.mpc.gen(Generator_index,1) = Bus_number;                    %set bus #
-                        Wrapper.mpc.gen(Generator_index,6) = 1;                             %set Voltage
                         Wrapper.mpc.gen(Generator_index,8) = 1;                             %gen status on
-                        Wrapper.mpc.gen(Generator_index,9) =P_Q(Bus_number).range(2);      %Set max reduction
+                        Wrapper.mpc.gen(Generator_index,9) = P_Q(Bus_number).range(2);      %Set max reduction
                         Wrapper.mpc.gencost(Generator_index,:) = 0;                         %new entry of 0's
                         Wrapper.mpc.gencost(Generator_index,1) = P_Q(Bus_number).model;     %Polynomial model
                         if P_Q(Bus_number).model == 2                                   %Polynomial
@@ -99,6 +111,19 @@ for run = 1:runs
                         Wrapper.mpc.gencost(Generator_index,:) = [];
                     end
                 end
+                Current_price = Wrapper.results.RTM.LMP((time_granted/300),(1+Dsp_bus));
+                if Current_price > Price_threshold
+                    flexiblity_actual = flexiblity_actual + (flexiblity_increment*flexiblity);
+                    if flexiblity == 0
+                        flexiblity_actual = 1;
+                    end
+                end
+                %Delete previous results if running again
+                if ((Current_price > Price_threshold) && (flexiblity_actual <= flexiblity))
+                    Wrapper.results.RTM.LMP(size(Wrapper.results.RTM.LMP,1),:) = [];
+                    Wrapper.results.RTM.PD(size(Wrapper.results.RTM.PD,1),:) = [];
+                end
+            end
                 %*************************************************************
                 tnext_real_time_market = tnext_real_time_market + Wrapper.config_data.real_time_market.interval;
         end
@@ -124,13 +149,8 @@ for run = 1:runs
         Compare_generation = [Compare_generation Wrapper.results.RTM.PD(:,2:9)];
     end
 end
-% for a=1:8
-% subplot(2,4,a);
-% plot (Compare_prices(:,1) , Compare_prices(:,1+a))
-% hold on
-% plot (Compare_prices(:,1) , Compare_prices(:,9+a))
-% hold off
-% end
+
+%%%%%%%%%%%%%%%%%%%%%%% Begin Graphing %%%%%%%%%%%%%%%%%%%%%%%%%%%
 Labels = "";
 for a=1:runs
     Labels(a) = append(num2str(flexiblity*100*(a-1)/(runs-1)), "%");

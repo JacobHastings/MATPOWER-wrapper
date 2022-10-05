@@ -157,19 +157,29 @@ classdef MATPOWERWrapper
                 load_data = profile(profile_row, cosim_bus+1);
                 constant_load = load_data*(1-flexibility); 
                 flex_load = load_data*(flexibility); 
-                Q_values = [constant_load constant_load+(flex_load*1/3) constant_load+flex_load];
-                P_values = [max(price_range) mean(price_range) min(price_range)];
+                %Q_values = [constant_load constant_load+(flex_load*1/3) constant_load+flex_load];
+                %P_values = [max(price_range) mean(price_range) min(price_range)];
                 %Cumulative sum P over Q
+                Q_values = linspace(0,flex_load,10);
+                P_values = linspace(max(price_range),min(price_range),10);
                 P_Q(cosim_bus).model = model;
                 if model == 2 %polynomial
                     %Fix P and Q values
-                    Q_values = flip((Q_values - Q_values(1)));
-                    P_values = flip(P_values);
+%                     Q_values = flip((Q_values - Q_values(1)));
+%                     P_values = flip(P_values);
                     %Standard integration, triangles**********************
-                    P_values(1) = (0.5 * (Q_values(2) - Q_values(1)) * (P_values(2) + P_values(1))) + (0.5 * (Q_values(3) - Q_values(2)) * (P_values(2) + P_values(3)));
-                    P_values(2) = 0.5 * (Q_values(3) - Q_values(2)) * (P_values(2) + P_values(3));
-                    P_values(3) = 0;
-                    P_Q(cosim_bus).bid = polyfit(Q_values,P_values,2);
+%                     P_values(1) = (0.5 * (Q_values(2) - Q_values(1)) * (P_values(2) + P_values(1))) + (0.5 * (Q_values(3) - Q_values(2)) * (P_values(2) + P_values(3)));
+%                     P_values(2) = 0.5 * (Q_values(3) - Q_values(2)) * (P_values(2) + P_values(3));
+%                     P_values(3) = 0;
+                    actual_cost = zeros(10,1);
+                    for i=1:10
+                        if i==1
+                            actual_cost(i)=-1*Q_values(i)*P_values(i);
+                        else
+                            actual_cost(i)=actual_cost(i-1)-((Q_values(i)-Q_values(i-1))*P_values(i));
+                        end
+                    end
+                    P_Q(cosim_bus).bid = polyfit(-1*Q_values,actual_cost,2);
                     P_Q(cosim_bus).range = [0,flex_load];
                     P_Q(cosim_bus).constant_load = constant_load;
                 else % Piecewise linear
